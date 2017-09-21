@@ -2,10 +2,6 @@ import  math, threading
 import urllib2, shutil, os
 from glob import iglob
 
-
-def unwrap_self_f(arg, **kwarg):
-    return threaded_downloader.download_chunk(*arg, **kwarg)
-
 class threaded_downloader():
     def __init__(self):
         self.set_max_download_threads(10)
