@@ -2,9 +2,7 @@ import  math, threading
 import urllib2, shutil, os
 from glob import iglob
 
-
-def unwrap_self_f(arg, **kwarg):
-    return threaded_downloader.download_chunk(*arg, **kwarg)
+# 1) ORM https://github.com/coleifer/peewee
 
 class threaded_downloader():
     def __init__(self):
@@ -26,7 +24,7 @@ class threaded_downloader():
         self.output_file_name = file_name
         
     def callback(self):
-        print("Callback kicked off.")
+        print("Download complete, file: {f}" .format(f=''.join((self.output_directory, self.output_file_name)))
 
     def set_max_download_threads(self, max_threads):
         self.pool_sema =  threading.BoundedSemaphore(value=max_threads)
