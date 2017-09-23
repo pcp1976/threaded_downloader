@@ -7,51 +7,35 @@ else:
     import urllib2
 
 from glob import iglob
-t_max = 4
-pool_sema = threading.BoundedSemaphore(t_max)
 
 class DownloadWorker(threading.Thread):
-    def __init__(self, chunk, logger):
+    def __init__(self, chunk, logger, pool_sema):
         super( DownloadWorker, self ).__init__()
         self.chunk = chunk
         self.logger = logger
+        self.pool_sema = pool_sema
         
-    def is_locked(self, filepath):
-        locked = None
-        file_object = None
-        if os.path.exists(filepath):
-            try:
-                buffer_size = 8
-                file_object = open(filepath, 'a', buffer_size)
-                if file_object:
-                    locked = False
-            except IOError as e:
-                self.logger.error(str(e))
-                locked = True
-            finally:
-                if file_object:
-                    file_object.close()
-        else:
-            print ("%s not found." % filepath)
-        return locked
-    
     def run(self):
-        global pool_sema
-        pool_sema.acquire()
         self.logger.debug("{} started!".format(self.getName())) 
+        self.pool_sema.acquire()
+        self.logger.debug("{} lock acquired".format(self.getName())) 
         req = urllib2.Request(self.chunk['url'])
         req.headers['Range'] = 'bytes=%s-%s' % (self.chunk['start'], self.chunk['end'])
         response = urllib2.urlopen(req)
+        self.logger.debug("{} URL opened".format(self.getName())) 
         try:
             out_file = open(self.chunk['file_name'], 'wb')
+            self.logger.debug("{} part file opened".format(self.getName())) 
             shutil.copyfileobj(response, out_file)
+            self.logger.debug("{} response copied to part file".format(self.getName())) 
         except Exception as e:
             self.logger.error(str(e))
         finally:
             out_file.close()
-            pool_sema.release()
-            while self.is_locked(self.chunk['file_name']):
-                time.sleep(1)
+            self.logger.debug("{} part file closed".format(self.getName())) 
+            self.pool_sema.release()
+            self.logger.debug("{} lock released".format(self.getName())) 
+
         self.logger.debug("{} ended!".format(self.getName())) 
 
 class threaded_downloader():
@@ -63,7 +47,7 @@ class threaded_downloader():
         self.set_output_directory(self.working_directory)
         self.set_callback(self.callback)
         self.set_output_file_name('joined.mp4')
-        self.log_level = 'DEBUG'
+        self.log_level = 'WARNING'
         self.log_directory = self.working_directory
         self.build_logger("threaded_downloader", self.log_level)
         self.logger = logging.getLogger("threaded_downloader")
@@ -117,7 +101,8 @@ class threaded_downloader():
         self.logger.info("callback : completed {f}".format(f=self.output_file_name))
 
     def set_max_download_threads(self, max_threads):
-        self.max_threads=max_threads
+        self.max_threads = max_threads
+        self.pool_sema = threading.BoundedSemaphore(self.max_threads)
 
     def set_working_directory(self, working_directory):
         self.working_directory = working_directory
@@ -152,7 +137,6 @@ class threaded_downloader():
         self.logger.debug("set_chunk_number chunk_number={chunk_number}".format(chunk_number=self.chunk_number))
         self.final_bytes = self.file_length%self.chunk_length      
         self.logger.debug("set_chunk_number final_bytes={final_bytes}".format(final_bytes=self.final_bytes))
-        self.logger.debug("The maths: chunk_number*chunk_length={x}".format(x=self.chunk_number*self.chunk_length))
         
     def generate_download_chunks(self):
         chunklist = []
@@ -175,14 +159,19 @@ class threaded_downloader():
         x = -1
         for c in chunklist:
             x = x + 1
-            t = DownloadWorker(c, self.logger)
+            t = DownloadWorker(c, self.logger, self.pool_sema)
+            self.logger.debug("spawned a new thread with chunk {}".format(str(c)))
             t.setName("Thread-{}".format(x))
+            self.logger.debug("spawned a new thread with name Thread-{}".format(str(x)))
             threads.append(t)
-        
+            self.logger.debug("added Thread-{} to threads".format(str(x)))
         for t in threads:
+            self.logger.debug("starting {}".format(str(t)))
             t.start()
-            
+            self.logger.debug("started {}".format(str(t)))
+          
         for t in threads:
+            self.logger.debug("calling join on {}".format(str(t)))           
             t.join()
         
         self.join_parts()
